@@ -223,7 +223,7 @@ func (e extentInternalNode) findBlocks(start, count uint64, fs *FileSystem) ([]u
 		if err != nil {
 			return nil, err
 		}
-		ebf, err := parseExtents(b, e.blockSize, uint32(extentStart), uint32(extentEnd))
+		ebf, err := parseExtents(b, e.blockSize, uint32(extentStart), child.count)
 		if err != nil {
 			return nil, err
 		}
@@ -250,7 +250,7 @@ func (e extentInternalNode) blocks(fs *FileSystem) (extents, error) {
 		if err != nil {
 			return nil, err
 		}
-		ebf, err := parseExtents(b, e.blockSize, child.fileBlock, child.fileBlock+child.count-1)
+		ebf, err := parseExtents(b, e.blockSize, child.fileBlock, child.count)
 		if err != nil {
 			return nil, err
 		}
@@ -304,7 +304,11 @@ func (e *extentInternalNode) getCount() uint32 {
 // parseExtents takes bytes, parses them to find the actual extents or the next blocks down.
 // It does not recurse down the tree, as we do not want to do that until we actually are ready
 // to read those blocks. This is similar to how ext4 driver in the Linux kernel does it.
-// totalBlocks is the total number of blocks covered in this given section of the extent tree.
+// start and count describe the file-block range of this section: start is the first
+// file block, count is the number of file blocks covered (not an end block). Real ext4
+// index entries store no span for their last entry, so its span is derived here as
+// start+count; passing an end value (e.g. start+count-1) silently drops that entry's
+// last block.
 func parseExtents(b []byte, blocksize, start, count uint32) (extentBlockFinder, error) {
 	var ret extentBlockFinder
 	// must have at least header and one entry

@@ -881,6 +881,90 @@ func TestExtendExtentTreeSplitRegression(t *testing.T) {
 	})
 }
 
+// TestExtentInternalNodeFindBlocksAcrossChildren guards the last-child span
+// bug documented on parseExtents: it builds a disk-backed tree by hand,
+//
+//	root (in memory, depth 2) -> internal node A on disk (depth 1)
+//	                                 -> leaf B (file blocks 0-4, 5 blocks)
+//	                                 -> leaf C (file blocks 5-11, 7 blocks, LAST child)
+//
+// findBlocks(0, 12, fs) must return all 12 blocks; the bug dropped the final
+// block of leaf C.
+func TestExtentInternalNodeFindBlocksAcrossChildren(t *testing.T) {
+	// 600 MiB gets 4 KiB blocks (see setupWritableExtentFS), matching the
+	// max:340 entries used below (12 + 12*340 = 4092 bytes/node).
+	fs, _ := setupWritableExtentFS(t, 600*MB)
+	blockSize := fs.superblock.blockSize
+
+	allocBlock := func(t *testing.T) uint64 {
+		t.Helper()
+		alloc, err := fs.allocateExtents(uint64(blockSize), nil)
+		if err != nil || alloc == nil || len(*alloc) == 0 {
+			t.Fatalf("allocateExtents failed: %v", err)
+		}
+		return (*alloc)[0].startingBlock
+	}
+
+	blockA := allocBlock(t)
+	blockB := allocBlock(t)
+	blockC := allocBlock(t)
+
+	leafB := extentLeafNode{
+		extentNodeHeader: extentNodeHeader{depth: 0, entries: 1, max: 340, blockSize: blockSize},
+		extents:          extents{{fileBlock: 0, count: 5, startingBlock: 1000}},
+	}
+	leafC := extentLeafNode{
+		extentNodeHeader: extentNodeHeader{depth: 0, entries: 1, max: 340, blockSize: blockSize},
+		extents:          extents{{fileBlock: 5, count: 7, startingBlock: 2000}},
+	}
+	internalA := extentInternalNode{
+		extentNodeHeader: extentNodeHeader{depth: 1, entries: 2, max: 340, blockSize: blockSize},
+		children: []*extentChildPtr{
+			{fileBlock: 0, diskBlock: blockB},
+			{fileBlock: 5, diskBlock: blockC}, // last child: span must come from caller-supplied count
+		},
+	}
+
+	if err := writeNodeToBlock(&leafB, fs, blockB); err != nil {
+		t.Fatalf("writeNodeToBlock(leafB): %v", err)
+	}
+	if err := writeNodeToBlock(&leafC, fs, blockC); err != nil {
+		t.Fatalf("writeNodeToBlock(leafC): %v", err)
+	}
+	if err := writeNodeToBlock(&internalA, fs, blockA); err != nil {
+		t.Fatalf("writeNodeToBlock(internalA): %v", err)
+	}
+
+	root := extentInternalNode{
+		extentNodeHeader: extentNodeHeader{depth: 2, entries: 1, max: 4, blockSize: blockSize},
+		children: []*extentChildPtr{
+			{fileBlock: 0, count: 12, diskBlock: blockA},
+		},
+	}
+
+	got, err := root.findBlocks(0, 12, fs)
+	if err != nil {
+		t.Fatalf("findBlocks failed: %v", err)
+	}
+
+	var want []uint64
+	for i := uint64(0); i < 5; i++ {
+		want = append(want, 1000+i)
+	}
+	for i := uint64(0); i < 7; i++ {
+		want = append(want, 2000+i)
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("findBlocks returned %d blocks, want %d: got %v, want %v", len(got), len(want), got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("block[%d] = %d, want %d (full: got %v, want %v)", i, got[i], want[i], got, want)
+		}
+	}
+}
+
 // TestExtendExtentTreeLargeFile reproduces the original OCI flatten
 // failure: writing a large binary in small chunks fragments allocations
 // across hundreds of extents and forces the extent tree to grow through

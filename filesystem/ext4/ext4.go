@@ -1807,7 +1807,7 @@ func (fs *FileSystem) readDirWithMkdir(p string, doMake bool) (*Directory, error
 	}
 	entries, err := fs.readDirectory(rootInode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read directory %s: %v", "/", err)
+		return nil, fmt.Errorf("failed to read directory %s: %w", "/", err)
 	}
 	currentDir.entries = entries
 	for i, subp := range paths {
@@ -1835,7 +1835,7 @@ func (fs *FileSystem) readDirWithMkdir(p string, doMake bool) (*Directory, error
 				var subdirEntry *directoryEntry
 				subdirEntry, err = fs.mkSubdir(currentDir, subp)
 				if err != nil {
-					return nil, fmt.Errorf("failed to create subdirectory %s", "/"+strings.Join(paths[0:i+1], "/"))
+					return nil, fmt.Errorf("failed to create subdirectory %s: %w", "/"+strings.Join(paths[0:i+1], "/"), err)
 				}
 				// save where we are to search next
 				currentDir = &Directory{
@@ -1848,7 +1848,7 @@ func (fs *FileSystem) readDirWithMkdir(p string, doMake bool) (*Directory, error
 		// get all of the entries in this directory
 		entries, err = fs.readDirectory(currentDir.inode)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read directory %s", "/"+strings.Join(paths[0:i+1], "/"))
+			return nil, fmt.Errorf("failed to read directory %s: %w", "/"+strings.Join(paths[0:i+1], "/"), err)
 		}
 		currentDir.entries = entries
 	}

@@ -144,7 +144,7 @@ func parseDirectoryTreeRoot(b []byte, largeDir bool) (node *directoryHashRoot, e
 	// Only check the meaningful name bytes (name_len=1); padding bytes beyond
 	// that are not guaranteed to be zero by the ext4 spec.
 	if b[0x8] != '.' {
-		return nil, fmt.Errorf("directory hash tree root dot name is %s and not '.'", b[0x8:0x9])
+		return nil, fmt.Errorf("directory hash tree root dot name is %q and not '.'", b[0x8:0x9])
 	}
 
 	// dotdot parameters
@@ -159,7 +159,7 @@ func parseDirectoryTreeRoot(b []byte, largeDir bool) (node *directoryHashRoot, e
 	}
 	// Same: only check name_len=2 bytes; padding is not guaranteed to be zero.
 	if b[0x14] != '.' || b[0x15] != '.' {
-		return nil, fmt.Errorf("directory hash tree root dotdot name is %s and not '..'", b[0x14:0x16])
+		return nil, fmt.Errorf("directory hash tree root dotdot name is %q and not '..'", b[0x14:0x16])
 	}
 
 	treeInformation := b[0x1d]
